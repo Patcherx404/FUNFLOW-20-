@@ -1,0 +1,8 @@
+{
+  "name": "P2P Personal Lending Platform",
+  "description": "A secure individual P2P lending platform with 20% fixed interest, real-time personal loan tracking, and Google-authenticated lender dashboards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
