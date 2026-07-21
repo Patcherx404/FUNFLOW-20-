@@ -75,7 +75,21 @@ export default function App() {
     }
 
     if (cachedLender) {
-      setCurrentLender(JSON.parse(cachedLender));
+      try {
+        const parsed = JSON.parse(cachedLender);
+        if (parsed && parsed.email) {
+          const perEmailSaved = localStorage.getItem(`fundflow_lender_${parsed.email}`);
+          if (perEmailSaved) {
+            setCurrentLender(JSON.parse(perEmailSaved));
+          } else {
+            setCurrentLender(parsed);
+          }
+        } else {
+          setCurrentLender(parsed);
+        }
+      } catch (e) {
+        // ignore parse error
+      }
     }
   }, []);
 
@@ -89,6 +103,7 @@ export default function App() {
     localStorage.setItem('fundflow_txs', JSON.stringify(updatedTxs));
     if (updatedLender) {
       localStorage.setItem('fundflow_lender', JSON.stringify(updatedLender));
+      localStorage.setItem(`fundflow_lender_${updatedLender.email}`, JSON.stringify(updatedLender));
     } else {
       localStorage.removeItem('fundflow_lender');
     }
@@ -326,17 +341,31 @@ export default function App() {
   };
 
   const handleLenderAuthSuccess = (lender: Lender) => {
+    // Check if there is an existing saved profile for this email address
+    const savedKey = `fundflow_lender_${lender.email}`;
+    const cachedForEmail = localStorage.getItem(savedKey);
+    let finalLender = lender;
+    if (cachedForEmail) {
+      try {
+        finalLender = JSON.parse(cachedForEmail);
+      } catch (e) {
+        finalLender = lender;
+      }
+    } else {
+      localStorage.setItem(savedKey, JSON.stringify(lender));
+    }
+
     // Save to the registered lenders list in localStorage
     const emailsRaw = localStorage.getItem('fundflow_registered_lenders');
     let emails: string[] = emailsRaw ? JSON.parse(emailsRaw) : [];
-    if (!emails.includes(lender.email)) {
-      emails.push(lender.email);
+    if (!emails.includes(finalLender.email)) {
+      emails.push(finalLender.email);
       localStorage.setItem('fundflow_registered_lenders', JSON.stringify(emails));
     }
 
-    saveState(loans, transactions, lender);
+    saveState(loans, transactions, finalLender);
     setCurrentView('lender');
-    showToast(`Welcome back, ${lender.name}! Portal unlocked.`, 'success');
+    showToast(`Welcome back, ${finalLender.name}! Portal unlocked.`, 'success');
   };
 
   const handleLogout = () => {
@@ -448,13 +477,14 @@ export default function App() {
 
           {currentView === 'lender' && currentLender && (
             <motion.div
-              key="lender"
+              key={`lender-view-${currentLender.email}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.25 }}
             >
               <LenderDashboard 
+                key={currentLender.email}
                 lender={currentLender}
                 loans={loans}
                 transactions={transactions}

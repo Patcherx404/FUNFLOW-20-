@@ -33,6 +33,7 @@ import {
 import { Loan, Transaction, Lender } from '../types';
 
 interface LenderDashboardProps {
+  key?: string;
   lender: Lender;
   loans: Loan[];
   transactions: Transaction[];
@@ -92,13 +93,31 @@ export default function LenderDashboard({
   const [formError, setFormError] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
+  // Sync state when lender email changes
+  useEffect(() => {
+    setLenderName(localStorage.getItem(`lender_name_${lender.email}`) || lender.name);
+    setLenderAddress(localStorage.getItem(`lender_address_${lender.email}`) || '');
+    setLenderIdType(localStorage.getItem(`lender_id_type_${lender.email}`) || 'National ID');
+    const savedDoc = localStorage.getItem(`lender_id_doc_${lender.email}`);
+    setLenderIdDoc(savedDoc ? JSON.parse(savedDoc) : null);
+    setVerificationStatus((localStorage.getItem(`lender_verification_status_${lender.email}`) as any) || 'UNVERIFIED');
+    setApplyFormError(null);
+    setFormError(null);
+    setIsApplyModalOpen(false);
+  }, [lender.email, lender.name]);
+
   // Apply Loan Modal Form states
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
   const [applyFormRepaymentType, setApplyFormRepaymentType] = useState<'daily-30' | 'daily-15' | 'lump-15'>('daily-15');
   const [applyFormRequestedAmount, setApplyFormRequestedAmount] = useState('1000');
   const [applyFormError, setApplyFormError] = useState<string | null>(null);
 
-  const activeLoan = loans.find(l => l.status !== 'PAID');
+  const activeLoan = loans.find(l => 
+    l.status !== 'PAID' && 
+    lender.email && 
+    l.borrowerEmail && 
+    l.borrowerEmail.toLowerCase() === lender.email.toLowerCase()
+  );
   const hasActiveLoan = !!activeLoan;
 
   const handleApplyFormSubmit = (e: React.FormEvent) => {
@@ -147,7 +166,7 @@ export default function LenderDashboard({
       description: dynamicDesc,
       requestedAmount: amount,
       termMonths: terms,
-      borrowerEmail: `borrower.${Math.floor(100 + Math.random() * 899)}@gmail.com`
+      borrowerEmail: lender.email || `borrower.${Math.floor(100 + Math.random() * 899)}@gmail.com`
     });
 
     // Reset Form
