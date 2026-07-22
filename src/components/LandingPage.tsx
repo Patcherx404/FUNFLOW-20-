@@ -77,7 +77,7 @@ export default function LandingPage({ onEnterLender }: LandingPageProps) {
               className="inline-flex items-center justify-center gap-2.5 px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-base rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer transform hover:-translate-y-0.5"
             >
               <Lock size={16} />
-              Access Lender Portal (Secure Gmail Auth)
+              Access Lender Portal (1-Tap Google Login)
               <ArrowRight size={18} />
             </button>
           </motion.div>

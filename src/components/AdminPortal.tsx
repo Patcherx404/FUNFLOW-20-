@@ -34,7 +34,8 @@ import {
   UserX,
   RefreshCw,
   AlertCircle,
-  FileCheck
+  FileCheck,
+  ExternalLink
 } from 'lucide-react';
 import { Loan, Transaction } from '../types';
 
@@ -688,6 +689,16 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
           </div>
 
           <div className="flex items-center gap-3 self-end md:self-auto">
+            <a
+              href="https://console.firebase.google.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-amber-300 hover:text-white bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/30 rounded-lg transition-colors cursor-pointer"
+              title="Open Google Firebase Console"
+            >
+              <ExternalLink size={13} />
+              Firebase Console
+            </a>
             <button
               onClick={handleResetToDefaults}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
