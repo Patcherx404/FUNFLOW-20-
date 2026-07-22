@@ -26,7 +26,15 @@ import {
   Check,
   Eye,
   X,
-  Percent
+  Percent,
+  UserPlus,
+  Search,
+  Edit,
+  ShieldX,
+  UserX,
+  RefreshCw,
+  AlertCircle,
+  FileCheck
 } from 'lucide-react';
 import { Loan, Transaction } from '../types';
 
@@ -82,49 +90,251 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
   const [registeredLenders, setRegisteredLenders] = useState<any[]>([]);
   const [selectedLenderDoc, setSelectedLenderDoc] = useState<any | null>(null);
 
+  // Account management modals & search filters
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<any | null>(null);
+  const [accountFormEmail, setAccountFormEmail] = useState('');
+  const [accountFormName, setAccountFormName] = useState('');
+  const [accountFormAddress, setAccountFormAddress] = useState('');
+  const [accountFormIdType, setAccountFormIdType] = useState('National ID');
+  const [accountFormKycStatus, setAccountFormKycStatus] = useState<'UNVERIFIED' | 'SUBMITTED' | 'VERIFIED'>('VERIFIED');
+  const [accountFormAccountStatus, setAccountFormAccountStatus] = useState<'ACTIVE' | 'SUSPENDED'>('ACTIVE');
+  const [accountFormBalance, setAccountFormBalance] = useState('5000000');
+  const [accountFormError, setAccountFormError] = useState('');
+
+  const [accountSearchQuery, setAccountSearchQuery] = useState('');
+  const [accountStatusFilter, setAccountStatusFilter] = useState('ALL');
+  const [selectedAccountHistory, setSelectedAccountHistory] = useState<any | null>(null);
+
   const loadRegisteredLenders = () => {
-    const emailsRaw = localStorage.getItem('fundflow_registered_lenders');
-    let emails: string[] = emailsRaw ? JSON.parse(emailsRaw) : [];
-    
-    // Always guarantee 'projectile.afk@gmail.com' (the user) is present
-    if (!emails.includes('projectile.afk@gmail.com')) {
-      emails.push('projectile.afk@gmail.com');
+    try {
+      const emailSet = new Set<string>();
+
+      // 1. Scan fundflow_registered_lenders from localStorage
+      const emailsRaw = localStorage.getItem('fundflow_registered_lenders');
+      if (emailsRaw) {
+        try {
+          const parsed = JSON.parse(emailsRaw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach(e => {
+              if (typeof e === 'string' && e.trim()) {
+                emailSet.add(e.toLowerCase().trim());
+              }
+            });
+          }
+        } catch (e) {
+          console.error('[System Admin Console] Error parsing fundflow_registered_lenders:', e);
+        }
+      }
+
+      // 2. Discover accounts from active loans (borrowers and lenders)
+      loans.forEach(loan => {
+        if (loan.borrowerEmail && loan.borrowerEmail.trim()) {
+          emailSet.add(loan.borrowerEmail.toLowerCase().trim());
+        }
+        if (loan.lenderId && loan.lenderId.includes('@')) {
+          emailSet.add(loan.lenderId.toLowerCase().trim());
+        }
+      });
+
+      // 3. Scan all localStorage keys for registered user profiles or KYC entries
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) {
+          if (key.startsWith('fundflow_lender_')) {
+            const em = key.replace('fundflow_lender_', '').toLowerCase().trim();
+            if (em && em.includes('@')) emailSet.add(em);
+          } else if (key.startsWith('lender_verification_status_')) {
+            const em = key.replace('lender_verification_status_', '').toLowerCase().trim();
+            if (em && em.includes('@')) emailSet.add(em);
+          } else if (key.startsWith('lender_name_')) {
+            const em = key.replace('lender_name_', '').toLowerCase().trim();
+            if (em && em.includes('@')) emailSet.add(em);
+          } else if (key.startsWith('user_account_status_')) {
+            const em = key.replace('user_account_status_', '').toLowerCase().trim();
+            if (em && em.includes('@')) emailSet.add(em);
+          }
+        }
+      }
+
+      // 4. Baseline system test accounts
+      emailSet.add('projectile.afk@gmail.com');
+      emailSet.add('lancelot.du_lac@gmail.com');
+
+      const syncedEmails = Array.from(emailSet);
+
+      // Instantly persist normalized list to prevent data loss or drift
+      localStorage.setItem('fundflow_registered_lenders', JSON.stringify(syncedEmails));
+
+      const loaded = syncedEmails.map(email => {
+        // Read cached user profile if exists
+        let cachedProfile: any = null;
+        const cachedProfileRaw = localStorage.getItem(`fundflow_lender_${email}`);
+        if (cachedProfileRaw) {
+          try {
+            cachedProfile = JSON.parse(cachedProfileRaw);
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        const defaultName = email === 'projectile.afk@gmail.com' 
+          ? 'Arthur Pendragon' 
+          : email === 'lancelot.du_lac@gmail.com' 
+          ? 'Lancelot du Lac' 
+          : email.split('@')[0].split(/[._\-+]/).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+
+        const name = localStorage.getItem(`lender_name_${email}`) || cachedProfile?.name || defaultName;
+        const address = localStorage.getItem(`lender_address_${email}`) || (email === 'projectile.afk@gmail.com' ? 'Suite 300, 88 Corporate Avenue, Ortigas Center, Pasig City, Metro Manila' : email === 'lancelot.du_lac@gmail.com' ? 'Roundtable Court, Camelot Estate, Tagaytay, Cavite' : '');
+        const idType = localStorage.getItem(`lender_id_type_${email}`) || 'National ID';
+        
+        const docRaw = localStorage.getItem(`lender_id_doc_${email}`);
+        const idDoc = docRaw ? JSON.parse(docRaw) : (email === 'projectile.afk@gmail.com' || email === 'lancelot.du_lac@gmail.com' ? {
+          name: email === 'projectile.afk@gmail.com' ? 'passport_scan_lender_demo.jpg' : 'drivers_license_lancelot.png',
+          size: '1.2 MB',
+          previewUrl: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=600'
+        } : null);
+
+        const status = localStorage.getItem(`lender_verification_status_${email}`) || (email === 'projectile.afk@gmail.com' || email === 'lancelot.du_lac@gmail.com' ? 'VERIFIED' : 'UNVERIFIED');
+        const accountStatus = localStorage.getItem(`user_account_status_${email}`) || 'ACTIVE';
+        
+        const savedBal = localStorage.getItem(`user_balance_${email}`);
+        const balance = savedBal !== null ? parseFloat(savedBal) : (cachedProfile?.balance || 5000000);
+
+        // Calculate borrower & lender loan applications and history
+        const borrowerLoans = loans.filter(l => l.borrowerEmail && l.borrowerEmail.toLowerCase() === email);
+        const lenderLoans = loans.filter(l => l.lenderId && l.lenderId.toLowerCase() === email);
+
+        return {
+          email,
+          name,
+          address,
+          idType,
+          idDoc,
+          status,
+          accountStatus: accountStatus as 'ACTIVE' | 'SUSPENDED',
+          balance,
+          borrowerLoansCount: borrowerLoans.length,
+          lenderLoansCount: lenderLoans.length,
+          borrowerLoans,
+          lenderLoans
+        };
+      });
+
+      console.log(`[System Admin Console] Account synchronization complete. Total active accounts: ${loaded.length}`, loaded.map(u => u.email));
+      setRegisteredLenders(loaded);
+    } catch (err) {
+      console.error('[System Admin Console] Account synchronization failure:', err);
     }
-    // Also add another mock lender to populate the admin panel beautifully
-    if (!emails.includes('lancelot.du_lac@gmail.com')) {
-      emails.push('lancelot.du_lac@gmail.com');
-    }
-
-    const loaded = emails.map(email => {
-      const name = localStorage.getItem(`lender_name_${email}`) || (email === 'projectile.afk@gmail.com' ? 'Arthur Pendragon' : email === 'lancelot.du_lac@gmail.com' ? 'Lancelot du Lac' : email.split('@')[0]);
-      const address = localStorage.getItem(`lender_address_${email}`) || (email === 'projectile.afk@gmail.com' ? 'Suite 300, 88 Corporate Avenue, Ortigas Center, Pasig City, Metro Manila' : email === 'lancelot.du_lac@gmail.com' ? 'Roundtable Court, Camelot Estate, Tagaytay, Cavite' : '');
-      const idType = localStorage.getItem(`lender_id_type_${email}`) || 'National ID';
-      
-      const docRaw = localStorage.getItem(`lender_id_doc_${email}`);
-      const idDoc = docRaw ? JSON.parse(docRaw) : (email === 'projectile.afk@gmail.com' || email === 'lancelot.du_lac@gmail.com' ? {
-        name: email === 'projectile.afk@gmail.com' ? 'passport_scan_lender_demo.jpg' : 'drivers_license_lancelot.png',
-        size: '1.2 MB',
-        previewUrl: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=600'
-      } : null);
-
-      const status = localStorage.getItem(`lender_verification_status_${email}`) || (email === 'projectile.afk@gmail.com' || email === 'lancelot.du_lac@gmail.com' ? 'VERIFIED' : 'UNVERIFIED');
-
-      return {
-        email,
-        name,
-        address,
-        idType,
-        idDoc,
-        status
-      };
-    });
-
-    setRegisteredLenders(loaded);
   };
 
   useEffect(() => {
     loadRegisteredLenders();
   }, [loans, transactions]);
+
+  // Handlers for Admin account creation & editing
+  const handleOpenCreateAccountModal = () => {
+    setEditingAccount(null);
+    setAccountFormEmail('');
+    setAccountFormName('');
+    setAccountFormAddress('');
+    setAccountFormIdType('National ID');
+    setAccountFormKycStatus('VERIFIED');
+    setAccountFormAccountStatus('ACTIVE');
+    setAccountFormBalance('5000000');
+    setAccountFormError('');
+    setShowAccountModal(true);
+  };
+
+  const handleOpenEditAccountModal = (account: any) => {
+    setEditingAccount(account);
+    setAccountFormEmail(account.email);
+    setAccountFormName(account.name);
+    setAccountFormAddress(account.address);
+    setAccountFormIdType(account.idType || 'National ID');
+    setAccountFormKycStatus(account.status);
+    setAccountFormAccountStatus(account.accountStatus);
+    setAccountFormBalance(account.balance.toString());
+    setAccountFormError('');
+    setShowAccountModal(true);
+  };
+
+  const handleSaveAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAccountFormError('');
+
+    const emailClean = accountFormEmail.trim().toLowerCase();
+    if (!emailClean || !emailClean.includes('@')) {
+      setAccountFormError('Please enter a valid Gmail address.');
+      return;
+    }
+
+    const bal = parseFloat(accountFormBalance);
+    if (isNaN(bal) || bal < 0) {
+      setAccountFormError('Please enter a valid non-negative capital balance.');
+      return;
+    }
+
+    try {
+      localStorage.setItem(`lender_name_${emailClean}`, accountFormName || emailClean.split('@')[0]);
+      localStorage.setItem(`lender_address_${emailClean}`, accountFormAddress || '');
+      localStorage.setItem(`lender_id_type_${emailClean}`, accountFormIdType);
+      localStorage.setItem(`lender_verification_status_${emailClean}`, accountFormKycStatus);
+      localStorage.setItem(`user_account_status_${emailClean}`, accountFormAccountStatus);
+      localStorage.setItem(`user_balance_${emailClean}`, bal.toString());
+
+      const userProfile = {
+        email: emailClean,
+        name: accountFormName || emailClean.split('@')[0],
+        photoUrl: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(emailClean.split('@')[0])}`,
+        balance: bal
+      };
+      localStorage.setItem(`fundflow_lender_${emailClean}`, JSON.stringify(userProfile));
+
+      // Register email globally
+      const emailsRaw = localStorage.getItem('fundflow_registered_lenders');
+      let emails: string[] = emailsRaw ? JSON.parse(emailsRaw) : [];
+      if (!emails.includes(emailClean)) {
+        emails.push(emailClean);
+        localStorage.setItem('fundflow_registered_lenders', JSON.stringify(emails));
+      }
+
+      setShowAccountModal(false);
+      loadRegisteredLenders();
+    } catch (err) {
+      console.error('[System Admin Console] Error saving account:', err);
+      setAccountFormError('Failed to save account record to system storage.');
+    }
+  };
+
+  const handleToggleAccountStatus = (email: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+    localStorage.setItem(`user_account_status_${email}`, newStatus);
+    loadRegisteredLenders();
+  };
+
+  const handleDeleteUserAccount = (email: string) => {
+    if (window.confirm(`Are you sure you want to permanently delete account (${email}) from the System Admin Console?`)) {
+      try {
+        const emailsRaw = localStorage.getItem('fundflow_registered_lenders');
+        let emails: string[] = emailsRaw ? JSON.parse(emailsRaw) : [];
+        emails = emails.filter(e => e.toLowerCase() !== email.toLowerCase());
+        localStorage.setItem('fundflow_registered_lenders', JSON.stringify(emails));
+
+        localStorage.removeItem(`fundflow_lender_${email}`);
+        localStorage.removeItem(`lender_name_${email}`);
+        localStorage.removeItem(`lender_address_${email}`);
+        localStorage.removeItem(`lender_id_doc_${email}`);
+        localStorage.removeItem(`lender_verification_status_${email}`);
+        localStorage.removeItem(`user_account_status_${email}`);
+        localStorage.removeItem(`user_balance_${email}`);
+
+        loadRegisteredLenders();
+      } catch (err) {
+        console.error('[System Admin Console] Error deleting user account:', err);
+      }
+    }
+  };
 
   // States and loaders for client (borrower) documents in AdminPortal
   const [clientDocs, setClientDocs] = useState<{ [loanId: string]: any[] }>({});
@@ -1103,123 +1313,250 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
                 </div>
               </div>
 
-              {/* Registered Peer Lenders & KYC Auditing Hub */}
+              {/* Registered Accounts & Account Management Console */}
               <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden mt-6">
-                <div className="px-5 py-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center">
+                <div className="px-5 py-4 bg-slate-900 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <h4 className="font-bold text-sm text-white flex items-center gap-2">
                       <Users size={16} className="text-indigo-400" />
-                      Registered Peer Lenders & KYC Auditing Hub
+                      Synchronized Gmail User Accounts & Account Management Console
                     </h4>
-                    <p className="text-xs text-slate-400 mt-0.5">Approve, reject, or request re-submission of identity credentials for secure funding operations.</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Real-time synchronized records for every registered Gmail account. Manage identity, balance, KYC, and suspension rules.</p>
                   </div>
-                  <span className="bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-500/30 font-mono">
-                    {registeredLenders.length} ACTIVE REGISTERED
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleOpenCreateAccountModal}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <UserPlus size={14} />
+                      Create User Account
+                    </button>
+                    <span className="bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-2.5 py-1 rounded-lg border border-indigo-500/30 font-mono">
+                      {registeredLenders.length} SYNCHRONIZED ACCOUNTS
+                    </span>
+                  </div>
+                </div>
+
+                {/* Search & Filter Bar */}
+                <div className="p-4 bg-slate-900/60 border-b border-slate-850 flex flex-col sm:flex-row items-center gap-3">
+                  <div className="relative flex-1 w-full">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <input
+                      type="text"
+                      placeholder="Search by Gmail address, legal name, or residential location..."
+                      value={accountSearchQuery}
+                      onChange={(e) => setAccountSearchQuery(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 text-slate-200 text-xs rounded-xl pl-9 pr-3 py-2 outline-hidden transition-colors"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <select
+                      value={accountStatusFilter}
+                      onChange={(e) => setAccountStatusFilter(e.target.value)}
+                      className="bg-slate-950 border border-slate-800 focus:border-indigo-500 text-slate-300 text-xs rounded-xl px-3 py-2 outline-hidden cursor-pointer"
+                    >
+                      <option value="ALL">All Account & KYC Statuses</option>
+                      <option value="ACTIVE">Status: ACTIVE</option>
+                      <option value="SUSPENDED">Status: SUSPENDED</option>
+                      <option value="VERIFIED">KYC: Verified</option>
+                      <option value="SUBMITTED">KYC: Auditing</option>
+                      <option value="UNVERIFIED">KYC: Unverified</option>
+                    </select>
+                    <button
+                      onClick={loadRegisteredLenders}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                      title="Force Sync All User Accounts"
+                    >
+                      <RefreshCw size={13} />
+                      Sync
+                    </button>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-900 border-b border-slate-800 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
                       <tr>
-                        <th className="py-4 px-5">Funder & Contact</th>
-                        <th className="py-4 px-5">Legal Name</th>
-                        <th className="py-4 px-5">Residential Address</th>
-                        <th className="py-4 px-5">ID Document Reference</th>
-                        <th className="py-4 px-5">KYC Status</th>
-                        <th className="py-4 px-5 text-right">KYC Auditing & Actions</th>
+                        <th className="py-4 px-5">Gmail Contact & Role</th>
+                        <th className="py-4 px-5">Account Status</th>
+                        <th className="py-4 px-5">Legal Profile</th>
+                        <th className="py-4 px-5">Capital Wallet Balance</th>
+                        <th className="py-4 px-5">KYC Identity</th>
+                        <th className="py-4 px-5">Loan Activity</th>
+                        <th className="py-4 px-5 text-right">Admin Actions & Controls</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-850 font-medium">
-                      {registeredLenders.map((lender) => (
-                        <tr key={lender.email} className="hover:bg-slate-900/30 transition-colors">
-                          <td className="py-4 px-5">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 text-[10px] font-bold overflow-hidden">
-                                <img
-                                  src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(lender.email.split('@')[0])}`}
-                                  alt="Lender avatar"
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                              <div>
-                                <span className="block font-bold text-white">{lender.email}</span>
-                                <span className="block text-[10px] text-slate-500">P2P Funder</span>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-4 px-5 text-slate-200 font-semibold">
-                            {lender.name || <span className="text-slate-600 italic font-normal">Not Submitted</span>}
-                          </td>
-                          <td className="py-4 px-5 text-slate-300 max-w-xs truncate" title={lender.address}>
-                            {lender.address || <span className="text-slate-600 italic font-normal">Not Submitted</span>}
-                          </td>
-                          <td className="py-4 px-5">
-                            {lender.idDoc ? (
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-slate-300 block">{lender.idType}</span>
-                                <button
-                                  onClick={() => setSelectedLenderDoc(lender)}
-                                  className="text-indigo-400 hover:text-indigo-300 text-[10px] bg-slate-900 border border-slate-800 hover:border-slate-700 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-colors"
-                                >
-                                  <Eye size={10} />
-                                  View Doc
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-slate-600 italic font-normal">No Doc Uploaded</span>
-                            )}
-                          </td>
-                          <td className="py-4 px-5">
-                            {lender.status === 'UNVERIFIED' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] font-bold rounded-full">
-                                Unverified
-                              </span>
-                            )}
-                            {lender.status === 'SUBMITTED' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-bold rounded-full animate-pulse">
-                                Auditing
-                              </span>
-                            )}
-                            {lender.status === 'VERIFIED' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold rounded-full">
-                                Verified
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-4 px-5 text-right">
-                            <div className="flex justify-end gap-1.5">
-                              {lender.status !== 'VERIFIED' && (
-                                <button
-                                  onClick={() => handleUpdateLenderStatus(lender.email, 'VERIFIED')}
-                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] rounded transition-all cursor-pointer inline-flex items-center gap-1"
-                                >
-                                  <Check size={11} />
-                                  Approve KYC
-                                </button>
-                              )}
-                              {lender.status !== 'UNVERIFIED' && (
-                                <button
-                                  onClick={() => handleUpdateLenderStatus(lender.email, 'UNVERIFIED')}
-                                  className="px-2.5 py-1 bg-red-950/40 hover:bg-red-900/60 text-red-400 border border-red-500/20 font-bold text-[10px] rounded transition-all cursor-pointer inline-flex items-center gap-1"
-                                >
-                                  <Trash2 size={11} />
-                                  Reject / Reset
-                                </button>
-                              )}
-                              {lender.status === 'UNVERIFIED' && (
-                                <button
-                                  onClick={() => handleUpdateLenderStatus(lender.email, 'SUBMITTED')}
-                                  className="px-2.5 py-1 bg-blue-950/40 hover:bg-blue-900/60 text-blue-400 border border-blue-500/20 font-bold text-[10px] rounded transition-all cursor-pointer inline-flex items-center gap-1"
-                                >
-                                  <Clock size={11} />
-                                  Mark Auditing
-                                </button>
-                              )}
-                            </div>
+                      {registeredLenders.filter(lender => {
+                        const q = accountSearchQuery.toLowerCase().trim();
+                        const matchesSearch = !q || 
+                          lender.email.toLowerCase().includes(q) || 
+                          lender.name.toLowerCase().includes(q) || 
+                          lender.address.toLowerCase().includes(q);
+                          
+                        const matchesStatus = accountStatusFilter === 'ALL' || 
+                          lender.accountStatus === accountStatusFilter || 
+                          lender.status === accountStatusFilter;
+
+                        return matchesSearch && matchesStatus;
+                      }).length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="text-center py-10 text-slate-500">
+                            No registered accounts match the selected search criteria.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        registeredLenders.filter(lender => {
+                          const q = accountSearchQuery.toLowerCase().trim();
+                          const matchesSearch = !q || 
+                            lender.email.toLowerCase().includes(q) || 
+                            lender.name.toLowerCase().includes(q) || 
+                            lender.address.toLowerCase().includes(q);
+                            
+                          const matchesStatus = accountStatusFilter === 'ALL' || 
+                            lender.accountStatus === accountStatusFilter || 
+                            lender.status === accountStatusFilter;
+
+                          return matchesSearch && matchesStatus;
+                        }).map((lender) => (
+                          <tr key={lender.email} className="hover:bg-slate-900/30 transition-colors">
+                            <td className="py-4 px-5">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 text-[10px] font-bold overflow-hidden shrink-0">
+                                  <img
+                                    src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(lender.email.split('@')[0])}`}
+                                    alt="User avatar"
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                                <div>
+                                  <span className="block font-bold text-white">{lender.email}</span>
+                                  <span className="block text-[10px] text-slate-500">Registered Gmail User</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-5">
+                              {lender.accountStatus === 'SUSPENDED' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] font-bold rounded-full">
+                                  <UserX size={10} />
+                                  SUSPENDED
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold rounded-full">
+                                  <CheckCircle2 size={10} />
+                                  ACTIVE
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-4 px-5">
+                              <div className="max-w-xs">
+                                <span className="block font-semibold text-slate-200">{lender.name || <span className="text-slate-600 italic font-normal">Not Submitted</span>}</span>
+                                <span className="block text-[10px] text-slate-400 truncate" title={lender.address}>{lender.address || <span className="text-slate-600 italic font-normal">No address</span>}</span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-5 text-slate-200 font-bold font-mono">
+                              ₱{lender.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-4 px-5">
+                              <div className="space-y-1">
+                                {lender.status === 'UNVERIFIED' && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] font-bold rounded-full">
+                                    Unverified
+                                  </span>
+                                )}
+                                {lender.status === 'SUBMITTED' && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-bold rounded-full animate-pulse">
+                                    Auditing
+                                  </span>
+                                )}
+                                {lender.status === 'VERIFIED' && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold rounded-full">
+                                    Verified
+                                  </span>
+                                )}
+                                {lender.idDoc && (
+                                  <button
+                                    onClick={() => setSelectedLenderDoc(lender)}
+                                    className="text-indigo-400 hover:text-indigo-300 text-[10px] block font-mono hover:underline cursor-pointer"
+                                  >
+                                    View ID Scan
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-4 px-5">
+                              <button
+                                onClick={() => setSelectedAccountHistory(lender)}
+                                className="text-left group cursor-pointer"
+                              >
+                                <span className="block font-mono text-[11px] text-indigo-400 group-hover:underline font-bold">
+                                  {lender.borrowerLoansCount} Borrower Apps • {lender.lenderLoansCount} Funded Loans
+                                </span>
+                                <span className="block text-[10px] text-slate-500">Click to view history</span>
+                              </button>
+                            </td>
+                            <td className="py-4 px-5 text-right">
+                              <div className="flex justify-end items-center gap-1.5 flex-wrap">
+                                {lender.status !== 'VERIFIED' && (
+                                  <button
+                                    onClick={() => handleUpdateLenderStatus(lender.email, 'VERIFIED')}
+                                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] rounded-lg transition-all cursor-pointer inline-flex items-center gap-1"
+                                    title="Approve User KYC"
+                                  >
+                                    <Check size={11} />
+                                    Approve KYC
+                                  </button>
+                                )}
+                                {lender.status !== 'UNVERIFIED' && (
+                                  <button
+                                    onClick={() => handleUpdateLenderStatus(lender.email, 'UNVERIFIED')}
+                                    className="px-2 py-1 bg-red-950/40 hover:bg-red-900/60 text-red-400 border border-red-500/20 font-bold text-[10px] rounded-lg transition-all cursor-pointer inline-flex items-center gap-1"
+                                    title="Reject or Reset User KYC"
+                                  >
+                                    <X size={11} />
+                                    Reset KYC
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleToggleAccountStatus(lender.email, lender.accountStatus)}
+                                  className={`px-2 py-1 font-bold text-[10px] rounded-lg border transition-all cursor-pointer inline-flex items-center gap-1 ${
+                                    lender.accountStatus === 'ACTIVE'
+                                      ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-400 border-amber-500/20'
+                                      : 'bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-400 border-emerald-500/20'
+                                  }`}
+                                  title={lender.accountStatus === 'ACTIVE' ? 'Suspend Account' : 'Activate Account'}
+                                >
+                                  {lender.accountStatus === 'ACTIVE' ? (
+                                    <>
+                                      <ShieldX size={11} />
+                                      Suspend
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle2 size={11} />
+                                      Activate
+                                    </>
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => handleOpenEditAccountModal(lender)}
+                                  className="p-1 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 rounded-lg transition-colors cursor-pointer"
+                                  title="Edit Account Details"
+                                >
+                                  <Edit size={11} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteUserAccount(lender.email)}
+                                  className="p-1 bg-slate-900 hover:bg-red-950/60 text-rose-400 border border-slate-700 hover:border-red-500/30 rounded-lg transition-colors cursor-pointer"
+                                  title="Delete Account Record"
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1669,6 +2006,280 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
                     Delete Doc
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Create / Edit User Account Modal */}
+      <AnimatePresence>
+        {showAccountModal && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-slate-900 text-white border border-slate-800 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl relative"
+            >
+              <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2 font-display">
+                    <UserPlus size={16} className="text-indigo-400" />
+                    {editingAccount ? `Edit Account: ${editingAccount.email}` : 'Create New Synchronized Gmail User Account'}
+                  </h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Configure identity, capital wallet balance, KYC verification status, and security permissions.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAccountModal(false)}
+                  className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveAccount} className="p-6 space-y-4 bg-slate-900 text-xs">
+                {accountFormError && (
+                  <div className="p-3 bg-red-950/60 border border-red-500/30 text-red-300 rounded-xl flex items-center gap-2">
+                    <AlertCircle size={14} className="shrink-0" />
+                    <span>{accountFormError}</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1">Gmail Address *</label>
+                  <input
+                    type="email"
+                    required
+                    disabled={!!editingAccount}
+                    placeholder="user.account@gmail.com"
+                    value={accountFormEmail}
+                    onChange={(e) => setAccountFormEmail(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 text-slate-100 text-xs rounded-xl px-3 py-2.5 outline-hidden transition-colors disabled:opacity-50"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">Full Legal Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Arthur Pendragon"
+                      value={accountFormName}
+                      onChange={(e) => setAccountFormName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 text-slate-100 text-xs rounded-xl px-3 py-2.5 outline-hidden transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">ID Document Type</label>
+                    <select
+                      value={accountFormIdType}
+                      onChange={(e) => setAccountFormIdType(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 text-slate-100 text-xs rounded-xl px-3 py-2.5 outline-hidden cursor-pointer"
+                    >
+                      <option value="National ID">National ID</option>
+                      <option value="Passport">Passport</option>
+                      <option value="Driver's License">Driver's License</option>
+                      <option value="SSS / UMID ID">SSS / UMID ID</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1">Residential Address</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Suite 300, 88 Corporate Avenue, Metro Manila"
+                    value={accountFormAddress}
+                    onChange={(e) => setAccountFormAddress(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 text-slate-100 text-xs rounded-xl px-3 py-2.5 outline-hidden transition-colors"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">KYC Status</label>
+                    <select
+                      value={accountFormKycStatus}
+                      onChange={(e) => setAccountFormKycStatus(e.target.value as any)}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 text-slate-100 text-xs rounded-xl px-3 py-2.5 outline-hidden cursor-pointer"
+                    >
+                      <option value="VERIFIED">Verified</option>
+                      <option value="SUBMITTED">Auditing</option>
+                      <option value="UNVERIFIED">Unverified</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">Account State</label>
+                    <select
+                      value={accountFormAccountStatus}
+                      onChange={(e) => setAccountFormAccountStatus(e.target.value as any)}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 text-slate-100 text-xs rounded-xl px-3 py-2.5 outline-hidden cursor-pointer"
+                    >
+                      <option value="ACTIVE">ACTIVE</option>
+                      <option value="SUSPENDED">SUSPENDED</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">Wallet Balance (₱)</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      step="1000"
+                      value={accountFormBalance}
+                      onChange={(e) => setAccountFormBalance(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 text-slate-100 text-xs rounded-xl px-3 py-2.5 outline-hidden transition-colors font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-800 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAccountModal(false)}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <Check size={14} />
+                    Save & Synchronize
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* User Account Activity & Loan History Modal */}
+      <AnimatePresence>
+        {selectedAccountHistory && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-slate-900 text-white border border-slate-800 rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl relative"
+            >
+              <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 text-xs font-bold overflow-hidden shrink-0">
+                    <img
+                      src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(selectedAccountHistory.email.split('@')[0])}`}
+                      alt="User avatar"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white font-display flex items-center gap-2">
+                      {selectedAccountHistory.email}
+                      {selectedAccountHistory.accountStatus === 'SUSPENDED' ? (
+                        <span className="px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 text-[9px] font-bold rounded-full">SUSPENDED</span>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold rounded-full">ACTIVE</span>
+                      )}
+                    </h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Legal Name: {selectedAccountHistory.name || 'N/A'} • Wallet: ₱{selectedAccountHistory.balance.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedAccountHistory(null)}
+                  className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto text-xs">
+                {/* Borrower Credit Applications */}
+                <div>
+                  <h5 className="font-bold text-slate-300 uppercase tracking-wider text-[10px] mb-3 flex items-center gap-1.5">
+                    <FileText size={14} className="text-indigo-400" />
+                    Borrower Credit Applications ({selectedAccountHistory.borrowerLoans.length})
+                  </h5>
+                  {selectedAccountHistory.borrowerLoans.length === 0 ? (
+                    <div className="p-4 bg-slate-950 border border-slate-850 rounded-xl text-center text-slate-500 italic">
+                      No borrower credit applications submitted by this Gmail account.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedAccountHistory.borrowerLoans.map((loan: Loan) => (
+                        <div key={loan.id} className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex justify-between items-center">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white">{loan.businessName}</span>
+                              <span className="text-[9px] font-mono text-slate-500">{loan.id}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 block mt-0.5">
+                              ₱{loan.requestedAmount.toLocaleString()} • {loan.termMonths} Months • 20% APR
+                            </span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            loan.status === 'REPAYING' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                            loan.status === 'PAID' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                            loan.status === 'PENDING' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                            'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                          }`}>
+                            {loan.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Lender Funded Contracts */}
+                <div>
+                  <h5 className="font-bold text-slate-300 uppercase tracking-wider text-[10px] mb-3 flex items-center gap-1.5">
+                    <Briefcase size={14} className="text-emerald-400" />
+                    Lender Funded Contracts ({selectedAccountHistory.lenderLoans.length})
+                  </h5>
+                  {selectedAccountHistory.lenderLoans.length === 0 ? (
+                    <div className="p-4 bg-slate-950 border border-slate-850 rounded-xl text-center text-slate-500 italic">
+                      No peer loans funded by this Gmail account.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedAccountHistory.lenderLoans.map((loan: Loan) => (
+                        <div key={loan.id} className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex justify-between items-center">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white">{loan.businessName}</span>
+                              <span className="text-[9px] font-mono text-slate-500">{loan.id}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 block mt-0.5">
+                              Funded: ₱{loan.fundedAmount.toLocaleString()} • Borrower: {loan.borrowerEmail}
+                            </span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            loan.status === 'REPAYING' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                            'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          }`}>
+                            {loan.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-end">
+                <button
+                  onClick={() => setSelectedAccountHistory(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Close History
+                </button>
               </div>
             </motion.div>
           </div>
