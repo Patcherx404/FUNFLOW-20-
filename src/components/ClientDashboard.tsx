@@ -50,13 +50,32 @@ interface ClientApplication {
 }
 
 interface ClientDashboardProps {
+  key?: string;
   loans: Loan[];
+  currentUserEmail?: string;
   onMakeRepayment?: (loanId: string, paymentType: 'standard' | 'interest-only') => void;
+  onApplyLoan?: (loan: {
+    businessName: string;
+    category: string;
+    description: string;
+    requestedAmount: number;
+    termMonths: number;
+    borrowerEmail: string;
+  }) => string;
 }
 
-export default function ClientDashboard({ loans, onMakeRepayment }: ClientDashboardProps) {
+export default function ClientDashboard({ loans, currentUserEmail, onMakeRepayment, onApplyLoan }: ClientDashboardProps) {
   const [selectedAppIndex, setSelectedAppIndex] = useState(0);
   const [clientPayType, setClientPayType] = useState<'standard' | 'interest-only'>('standard');
+
+  // Quick application states for new accounts
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [applyBizName, setApplyBizName] = useState('');
+  const [applyCategory, setApplyCategory] = useState('General Business');
+  const [applyAmount, setApplyAmount] = useState('1000');
+  const [applyTerm, setApplyTerm] = useState('15');
+  const [applyDesc, setApplyDesc] = useState('');
+  const [applyError, setApplyError] = useState('');
 
   // Client-uploaded documents list (mocked state tied to current selection, persisted in localStorage)
   const [uploadedDocs, setUploadedDocs] = useState<{ [appId: string]: DocumentFile[] }>(() => {
@@ -117,21 +136,187 @@ export default function ClientDashboard({ loans, onMakeRepayment }: ClientDashbo
   const [previewDoc, setPreviewDoc] = useState<DocumentFile | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Fallback to empty if loans is empty or deleted
-  if (!loans || loans.length === 0) {
+  // Filter loans belonging to this specific user (if logged in)
+  const userLoans = currentUserEmail
+    ? loans.filter(l => l.borrowerEmail && l.borrowerEmail.toLowerCase() === currentUserEmail.toLowerCase())
+    : loans;
+
+  const handleClientApplySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setApplyError('');
+
+    if (!applyBizName.trim()) {
+      setApplyError('Please enter a business or purpose name.');
+      return;
+    }
+
+    const amt = parseFloat(applyAmount);
+    if (isNaN(amt) || amt < 100 || amt > 150000) {
+      setApplyError('Requested amount must be between ₱100 and ₱150,000.');
+      return;
+    }
+
+    if (onApplyLoan && currentUserEmail) {
+      onApplyLoan({
+        businessName: applyBizName,
+        category: applyCategory,
+        description: applyDesc || `${applyTerm}-day micro-credit request for ${applyBizName}`,
+        requestedAmount: amt,
+        termMonths: parseInt(applyTerm, 10),
+        borrowerEmail: currentUserEmail
+      });
+      setShowApplyModal(false);
+      setApplyBizName('');
+      setApplyDesc('');
+    }
+  };
+
+  // If no loans exist for this specific Gmail account
+  if (!userLoans || userLoans.length === 0) {
     return (
-      <div className="max-w-4xl mx-auto text-center py-16 space-y-4">
-        <ShieldAlert size={48} className="text-gray-300 mx-auto" />
-        <h3 className="text-lg font-bold text-gray-900">No Active Client Accounts</h3>
-        <p className="text-xs text-gray-500 max-w-sm mx-auto">
-          All client files and application records have been deleted in the live loan manager. Please use the Admin Gateway to seed demo requests.
-        </p>
+      <div className="max-w-4xl mx-auto py-12 px-4 space-y-6">
+        <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-xs text-center space-y-5">
+          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto">
+            <FileText size={32} />
+          </div>
+          <div>
+            <span className="inline-block px-3 py-1 bg-blue-50 text-blue-800 text-xs font-bold rounded-full border border-blue-100 mb-2">
+              Isolated Client Profile • {currentUserEmail || 'Guest'}
+            </span>
+            <h3 className="text-xl font-extrabold text-gray-900 tracking-tight font-display">
+              No Active Loan Applications Found
+            </h3>
+            <p className="text-sm text-gray-500 max-w-md mx-auto mt-2 leading-relaxed">
+              You currently have no open credit requests or loan applications associated with <strong className="font-semibold text-gray-800">{currentUserEmail || 'your account'}</strong>.
+            </p>
+          </div>
+
+          {onApplyLoan && currentUserEmail && (
+            <div className="pt-2">
+              <button
+                onClick={() => setShowApplyModal(true)}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                <Upload size={16} />
+                Submit New Credit Application
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Apply Modal */}
+        {showApplyModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <h4 className="text-base font-bold text-gray-900">New Credit Request</h4>
+                <button 
+                  onClick={() => setShowApplyModal(false)}
+                  className="text-gray-400 hover:text-gray-600 text-sm font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleClientApplySubmit} className="space-y-4">
+                {applyError && (
+                  <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-xs font-semibold rounded-xl flex items-center gap-2">
+                    <AlertCircle size={14} />
+                    <span>{applyError}</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Business / Loan Purpose</label>
+                  <input
+                    type="text"
+                    value={applyBizName}
+                    onChange={(e) => setApplyBizName(e.target.value)}
+                    placeholder="e.g. Apex Hardware Supplies Expansion"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Category</label>
+                  <select
+                    value={applyCategory}
+                    onChange={(e) => setApplyCategory(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="General Business">General Business</option>
+                    <option value="Food & Beverage">Food & Beverage</option>
+                    <option value="Manufacturing">Manufacturing</option>
+                    <option value="Personal & Emergency">Personal & Emergency</option>
+                    <option value="Healthcare">Healthcare</option>
+                    <option value="Technology">Technology</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Requested Amount (₱)</label>
+                    <input
+                      type="number"
+                      value={applyAmount}
+                      onChange={(e) => setApplyAmount(e.target.value)}
+                      min="100"
+                      max="150000"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Term (Days / Installments)</label>
+                    <select
+                      value={applyTerm}
+                      onChange={(e) => setApplyTerm(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="15">15 Days (Micro-cycle)</option>
+                      <option value="30">30 Days</option>
+                      <option value="60">60 Days</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Description / Notes</label>
+                  <textarea
+                    value={applyDesc}
+                    onChange={(e) => setApplyDesc(e.target.value)}
+                    rows={2}
+                    placeholder="Provide brief details about your loan request..."
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowApplyModal(false)}
+                    className="px-4 py-2 border border-gray-200 text-gray-600 rounded-xl text-xs font-semibold hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs"
+                  >
+                    Submit Application
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
-  // Construct applications dynamically from live loans list
-  const dynamicApplications: ClientApplication[] = loans.map(loan => {
+  // Construct applications dynamically from live loans list (isolated to userLoans)
+  const dynamicApplications: ClientApplication[] = userLoans.map(loan => {
     const docs = uploadedDocs[loan.id] || [];
     
     let status: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' = 'PENDING';

@@ -392,23 +392,25 @@ export default function LenderDashboard({
               </span>
             </div>
             <div className="mt-4 pt-3 border-t border-gray-50 flex items-center justify-between gap-2">
-              {loans.some(l => l.id === 'loan-3' && l.status === 'MARKETPLACE') ? (
+              {hasActiveLoan && activeLoan ? (
+                <div className="flex items-center justify-between w-full text-xs">
+                  <span className="text-gray-500 font-medium">My Active Request: <strong className="text-gray-900">{activeLoan.businessName}</strong></span>
+                  <span className="px-2 py-0.5 bg-amber-50 text-amber-700 font-bold rounded-full text-[10px] uppercase border border-amber-200">
+                    {activeLoan.status}
+                  </span>
+                </div>
+              ) : marketplaceLoans.length > 0 ? (
                 <button
-                  onClick={() => {
-                    const firstLoan = loans.find(l => l.id === 'loan-3');
-                    if (firstLoan) {
-                      onFundLoan(firstLoan.id);
-                    }
-                  }}
-                  className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer animate-pulse hover:animate-none"
+                  onClick={() => setActiveTab('live-manager')}
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
                 >
                   <CheckCircle size={14} />
-                  Approve First Loan (₱1,000)
+                  Explore Marketplace ({marketplaceLoans.length} Available)
                 </button>
               ) : (
                 <div className="flex items-center gap-1.5 text-xs text-gray-500">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
-                  First Loan Approved • Funds Ready for Disbursement
+                  Lender Capital Active • {myPortfolio.length} Funded Contracts
                 </div>
               )}
             </div>

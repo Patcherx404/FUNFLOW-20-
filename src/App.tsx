@@ -461,7 +461,7 @@ export default function App() {
 
           {currentView === 'client' && (
             <motion.div
-              key="client"
+              key={`client-view-${currentLender?.email || 'guest'}`}
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
@@ -469,8 +469,11 @@ export default function App() {
               className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10"
             >
               <ClientDashboard 
+                key={currentLender?.email || 'guest'}
                 loans={loans} 
+                currentUserEmail={currentLender?.email}
                 onMakeRepayment={(loanId, paymentType) => handleMakeRepayment(loanId, 0, paymentType)}
+                onApplyLoan={handleSubmitLoan}
               />
             </motion.div>
           )}

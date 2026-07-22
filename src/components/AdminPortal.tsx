@@ -96,18 +96,18 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
     }
 
     const loaded = emails.map(email => {
-      const name = localStorage.getItem(`lender_name_${email}`) || (email === 'projectile.afk@gmail.com' ? 'Arthur Pendragon' : 'Lancelot du Lac');
-      const address = localStorage.getItem(`lender_address_${email}`) || (email === 'projectile.afk@gmail.com' ? 'Suite 300, 88 Corporate Avenue, Ortigas Center, Pasig City, Metro Manila' : 'Roundtable Court, Camelot Estate, Tagaytay, Cavite');
-      const idType = localStorage.getItem(`lender_id_type_${email}`) || 'Passport';
+      const name = localStorage.getItem(`lender_name_${email}`) || (email === 'projectile.afk@gmail.com' ? 'Arthur Pendragon' : email === 'lancelot.du_lac@gmail.com' ? 'Lancelot du Lac' : email.split('@')[0]);
+      const address = localStorage.getItem(`lender_address_${email}`) || (email === 'projectile.afk@gmail.com' ? 'Suite 300, 88 Corporate Avenue, Ortigas Center, Pasig City, Metro Manila' : email === 'lancelot.du_lac@gmail.com' ? 'Roundtable Court, Camelot Estate, Tagaytay, Cavite' : '');
+      const idType = localStorage.getItem(`lender_id_type_${email}`) || 'National ID';
       
       const docRaw = localStorage.getItem(`lender_id_doc_${email}`);
-      const idDoc = docRaw ? JSON.parse(docRaw) : {
+      const idDoc = docRaw ? JSON.parse(docRaw) : (email === 'projectile.afk@gmail.com' || email === 'lancelot.du_lac@gmail.com' ? {
         name: email === 'projectile.afk@gmail.com' ? 'passport_scan_lender_demo.jpg' : 'drivers_license_lancelot.png',
         size: '1.2 MB',
         previewUrl: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=600'
-      };
+      } : null);
 
-      const status = localStorage.getItem(`lender_verification_status_${email}`) || 'VERIFIED';
+      const status = localStorage.getItem(`lender_verification_status_${email}`) || (email === 'projectile.afk@gmail.com' || email === 'lancelot.du_lac@gmail.com' ? 'VERIFIED' : 'UNVERIFIED');
 
       return {
         email,
