@@ -141,6 +141,14 @@ export default function ClientDashboard({ loans, currentUserEmail, onMakeRepayme
     ? loans.filter(l => l.borrowerEmail && l.borrowerEmail.toLowerCase() === currentUserEmail.toLowerCase())
     : loans;
 
+  const [applyEmail, setApplyEmail] = useState(currentUserEmail || '');
+
+  React.useEffect(() => {
+    if (currentUserEmail) {
+      setApplyEmail(currentUserEmail);
+    }
+  }, [currentUserEmail]);
+
   const handleClientApplySubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setApplyError('');
@@ -150,24 +158,31 @@ export default function ClientDashboard({ loans, currentUserEmail, onMakeRepayme
       return;
     }
 
+    const emailToUse = (applyEmail || currentUserEmail || '').trim().toLowerCase();
+    if (!emailToUse || !emailToUse.includes('@')) {
+      setApplyError('Please enter a valid Gmail address (@gmail.com).');
+      return;
+    }
+
     const amt = parseFloat(applyAmount);
     if (isNaN(amt) || amt < 100 || amt > 150000) {
       setApplyError('Requested amount must be between ₱100 and ₱150,000.');
       return;
     }
 
-    if (onApplyLoan && currentUserEmail) {
+    if (onApplyLoan) {
       onApplyLoan({
         businessName: applyBizName,
         category: applyCategory,
         description: applyDesc || `${applyTerm}-day micro-credit request for ${applyBizName}`,
         requestedAmount: amt,
         termMonths: parseInt(applyTerm, 10),
-        borrowerEmail: currentUserEmail
+        borrowerEmail: emailToUse
       });
       setShowApplyModal(false);
       setApplyBizName('');
       setApplyDesc('');
+      setSelectedAppIndex(0);
     }
   };
 
@@ -191,7 +206,7 @@ export default function ClientDashboard({ loans, currentUserEmail, onMakeRepayme
             </p>
           </div>
 
-          {onApplyLoan && currentUserEmail && (
+          {onApplyLoan && (
             <div className="pt-2">
               <button
                 onClick={() => setShowApplyModal(true)}
@@ -209,7 +224,10 @@ export default function ClientDashboard({ loans, currentUserEmail, onMakeRepayme
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
             <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
               <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-                <h4 className="text-base font-bold text-gray-900">New Credit Request</h4>
+                <h4 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                  <Upload size={18} className="text-blue-600" />
+                  New Credit Application
+                </h4>
                 <button 
                   onClick={() => setShowApplyModal(false)}
                   className="text-gray-400 hover:text-gray-600 text-sm font-bold"
@@ -225,6 +243,21 @@ export default function ClientDashboard({ loans, currentUserEmail, onMakeRepayme
                     <span>{applyError}</span>
                   </div>
                 )}
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Borrower Gmail Address</label>
+                  <input
+                    type="email"
+                    value={applyEmail}
+                    onChange={(e) => setApplyEmail(e.target.value)}
+                    placeholder="your.name@gmail.com"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
+                    required
+                  />
+                  <span className="text-[10px] text-gray-400 block mt-1">
+                    * Credit request will be registered to this Gmail account and sent to System Admin for approval.
+                  </span>
+                </div>
 
                 <div>
                   <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Business / Loan Purpose</label>
@@ -302,7 +335,7 @@ export default function ClientDashboard({ loans, currentUserEmail, onMakeRepayme
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs"
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
                   >
                     Submit Application
                   </button>
@@ -539,6 +572,13 @@ export default function ClientDashboard({ loans, currentUserEmail, onMakeRepayme
                 </button>
               );
             })}
+            <button
+              onClick={() => setShowApplyModal(true)}
+              className="px-3 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-500 text-white border border-blue-400 shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+            >
+              <Upload size={14} />
+              + Apply for Credit
+            </button>
           </div>
         </div>
       </div>

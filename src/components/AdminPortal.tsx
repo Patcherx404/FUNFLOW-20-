@@ -720,6 +720,81 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
         
+        {/* Pending Loan Applications Action Banner */}
+        {(() => {
+          const pendingList = loans.filter(l => l.status === 'PENDING');
+          if (pendingList.length === 0) return null;
+          return (
+            <div className="bg-gradient-to-r from-amber-950/80 via-slate-900 to-indigo-950/80 border-2 border-amber-500/50 p-5 rounded-2xl shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30 animate-pulse">
+                    <AlertCircle size={22} />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-black text-white flex items-center gap-2">
+                      <span>Pending Credit Applications</span>
+                      <span className="px-2.5 py-0.5 bg-amber-500 text-slate-950 text-xs font-black rounded-full shadow-xs">
+                        {pendingList.length} Action Required
+                      </span>
+                    </h3>
+                    <p className="text-xs text-amber-200/80 mt-0.5">
+                      New SME client applications submitted via Gmail authentication awaiting System Admin review & approval:
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setFilterStatus('PENDING');
+                    setActiveTab('loans');
+                  }}
+                  className="text-xs text-amber-300 hover:text-white underline font-bold cursor-pointer shrink-0"
+                >
+                  View in Table →
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+                {pendingList.map(loan => (
+                  <div key={loan.id} className="bg-slate-900/90 p-4 rounded-xl border border-amber-500/30 flex flex-col justify-between space-y-3">
+                    <div>
+                      <div className="flex justify-between items-start gap-2 mb-1">
+                        <span className="font-mono text-[10px] text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                          {loan.id}
+                        </span>
+                        <span className="text-xs font-black text-emerald-400 font-mono">
+                          ₱{loan.requestedAmount.toLocaleString()}
+                        </span>
+                      </div>
+                      <h4 className="font-bold text-sm text-white truncate">{loan.businessName}</h4>
+                      <p className="text-[11px] text-slate-400 font-mono truncate">{loan.borrowerEmail}</p>
+                      <p className="text-[11px] text-slate-300 mt-1 line-clamp-2">{loan.description}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+                      <button
+                        onClick={() => handleApproveLoan(loan.id)}
+                        className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <CheckCircle2 size={14} />
+                        Approve Loan
+                      </button>
+                      <button
+                        onClick={() => handleForceFund(loan.id)}
+                        className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 font-bold text-xs rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1"
+                        title="Force fund with Admin seed capital"
+                      >
+                        <Sparkles size={14} />
+                        Force Fund
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* KPI Dashboard Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-slate-950 border border-slate-800 p-5 rounded-2xl flex flex-col justify-between relative overflow-hidden group">
@@ -728,13 +803,17 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
             </div>
             <div className="flex justify-between items-start">
               {(() => {
-                const pendingLoan = loans.find(l => l.status === 'PENDING');
+                const pendingList = loans.filter(l => l.status === 'PENDING');
+                const totalPendingAmt = pendingList.reduce((sum, l) => sum + l.requestedAmount, 0);
                 return (
                   <>
                     <div>
                       <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Awaiting Underwriting</span>
                       <span className="block text-2xl font-black text-white mt-1.5">
-                        {pendingLoan ? `₱${pendingLoan.requestedAmount.toLocaleString()}` : "₱0.00"}
+                        ₱{totalPendingAmt.toLocaleString()}
+                      </span>
+                      <span className="block text-[10px] text-amber-400 font-semibold mt-0.5">
+                        {pendingList.length} Application{pendingList.length !== 1 ? 's' : ''} Pending
                       </span>
                     </div>
                     <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/10">
@@ -754,7 +833,7 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
                       className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] rounded-lg shadow-xs transition-colors cursor-pointer animate-pulse"
                     >
                       <CheckCircle2 size={12} />
-                      Approve {pendingLoan.businessName.split(' ')[0]}'s Loan
+                      Approve Next ({pendingLoan.businessName.split(' ')[0]})
                     </button>
                   );
                 } else {
@@ -859,19 +938,29 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
               {/* Filter controls */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800">
                 <div className="flex flex-wrap gap-1.5">
-                  {['ALL', 'PENDING', 'MARKETPLACE', 'REPAYING', 'PAID'].map((status) => (
-                    <button
-                      key={status}
-                      onClick={() => setFilterStatus(status)}
-                      className={`px-3 py-1 text-[10px] font-bold rounded-md tracking-wider transition-all cursor-pointer ${
-                        filterStatus === status 
-                          ? 'bg-indigo-600 text-white font-black' 
-                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                      }`}
-                    >
-                      {status}
-                    </button>
-                  ))}
+                  {['ALL', 'PENDING', 'MARKETPLACE', 'REPAYING', 'PAID'].map((status) => {
+                    const count = status === 'ALL' ? loans.length : loans.filter(l => l.status === status).length;
+                    return (
+                      <button
+                        key={status}
+                        onClick={() => setFilterStatus(status)}
+                        className={`px-3 py-1 text-[10px] font-bold rounded-md tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
+                          filterStatus === status 
+                            ? 'bg-indigo-600 text-white font-black' 
+                            : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                        }`}
+                      >
+                        <span>{status}</span>
+                        {count > 0 && (
+                          <span className={`px-1.5 py-0.2 rounded-full text-[9px] ${
+                            status === 'PENDING' ? 'bg-amber-500 text-slate-950 font-black animate-pulse' : 'bg-slate-800 text-slate-300 font-semibold'
+                          }`}>
+                            {count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 <div className="flex items-center gap-2">

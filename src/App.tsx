@@ -16,6 +16,14 @@ import {
 } from 'lucide-react';
 import { Loan, Transaction, Lender } from './types';
 import { INITIAL_LOANS, INITIAL_TRANSACTIONS } from './data';
+import { 
+  subscribeToLoans, 
+  subscribeToTransactions, 
+  syncLoanToFirestore, 
+  syncTransactionToFirestore, 
+  syncLenderToFirestore, 
+  seedFirestoreIfEmpty 
+} from './lib/firestoreSync';
 import LandingPage from './components/LandingPage';
 import GoogleSignIn from './components/GoogleSignIn';
 import LenderDashboard from './components/LenderDashboard';
@@ -35,43 +43,33 @@ export default function App() {
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
 
-  // Initialize and load from localstorage
+  // Initialize local cache and subscribe to Firebase Firestore
   useEffect(() => {
+    // 1. Load initial cache
     const cachedLoans = localStorage.getItem('fundflow_loans');
     const cachedTxs = localStorage.getItem('fundflow_txs');
     const cachedLender = localStorage.getItem('fundflow_lender');
 
     if (cachedLoans) {
-      const parsedLoans = JSON.parse(cachedLoans) as Loan[];
-      const containsOldData = parsedLoans.some(loan => loan.borrowerEmail === 'maria.santos@gmail.com');
-      
-      if (containsOldData) {
-        // Reset state and cache to new loans and transactions
-        setLoans(INITIAL_LOANS);
-        localStorage.setItem('fundflow_loans', JSON.stringify(INITIAL_LOANS));
-        setTransactions(INITIAL_TRANSACTIONS);
-        localStorage.setItem('fundflow_txs', JSON.stringify(INITIAL_TRANSACTIONS));
-      } else {
+      try {
+        const parsedLoans = JSON.parse(cachedLoans) as Loan[];
         setLoans(parsedLoans);
+      } catch (e) {
+        setLoans(INITIAL_LOANS);
       }
     } else {
       setLoans(INITIAL_LOANS);
-      localStorage.setItem('fundflow_loans', JSON.stringify(INITIAL_LOANS));
     }
 
     if (cachedTxs) {
-      const parsedTxs = JSON.parse(cachedTxs) as Transaction[];
-      const containsOldTx = parsedTxs.some(tx => tx.loanId === 'loan-1' && tx.loanName === 'Maria Santos');
-      
-      if (containsOldTx) {
-        setTransactions(INITIAL_TRANSACTIONS);
-        localStorage.setItem('fundflow_txs', JSON.stringify(INITIAL_TRANSACTIONS));
-      } else {
+      try {
+        const parsedTxs = JSON.parse(cachedTxs) as Transaction[];
         setTransactions(parsedTxs);
+      } catch (e) {
+        setTransactions(INITIAL_TRANSACTIONS);
       }
     } else {
       setTransactions(INITIAL_TRANSACTIONS);
-      localStorage.setItem('fundflow_txs', JSON.stringify(INITIAL_TRANSACTIONS));
     }
 
     if (cachedLender) {
@@ -91,22 +89,51 @@ export default function App() {
         // ignore parse error
       }
     }
+
+    // 2. Seed Firebase Firestore if database is empty
+    seedFirestoreIfEmpty(INITIAL_LOANS, INITIAL_TRANSACTIONS);
+
+    // 3. Real-time Firestore sync subscriptions
+    const unsubscribeLoans = subscribeToLoans((cloudLoans) => {
+      if (cloudLoans && cloudLoans.length > 0) {
+        setLoans(cloudLoans);
+        localStorage.setItem('fundflow_loans', JSON.stringify(cloudLoans));
+      }
+    });
+
+    const unsubscribeTxs = subscribeToTransactions((cloudTxs) => {
+      if (cloudTxs && cloudTxs.length > 0) {
+        setTransactions(cloudTxs);
+        localStorage.setItem('fundflow_txs', JSON.stringify(cloudTxs));
+      }
+    });
+
+    return () => {
+      unsubscribeLoans();
+      unsubscribeTxs();
+    };
   }, []);
 
-  // Utility to save to localStorage
+  // Utility to save to localStorage and sync to Firebase Cloud Firestore
   const saveState = (updatedLoans: Loan[], updatedTxs: Transaction[], updatedLender: Lender | null) => {
     setLoans(updatedLoans);
     setTransactions(updatedTxs);
     setCurrentLender(updatedLender);
     
+    // Save to local cache
     localStorage.setItem('fundflow_loans', JSON.stringify(updatedLoans));
     localStorage.setItem('fundflow_txs', JSON.stringify(updatedTxs));
     if (updatedLender) {
       localStorage.setItem('fundflow_lender', JSON.stringify(updatedLender));
       localStorage.setItem(`fundflow_lender_${updatedLender.email}`, JSON.stringify(updatedLender));
+      syncLenderToFirestore(updatedLender);
     } else {
       localStorage.removeItem('fundflow_lender');
     }
+
+    // Sync changed loans and transactions to Firestore
+    updatedLoans.forEach(loan => syncLoanToFirestore(loan));
+    updatedTxs.forEach(tx => syncTransactionToFirestore(tx));
   };
 
   const showToast = (text: string, type: 'success' | 'info' = 'success') => {
@@ -398,7 +425,13 @@ export default function App() {
                 <Percent size={18} className="font-bold text-white" />
               </div>
               <div>
-                <span className="block text-sm font-extrabold tracking-tight text-gray-900 font-display">FundFlow 20%</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="block text-sm font-extrabold tracking-tight text-gray-900 font-display">FundFlow 20%</span>
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-100/90 border border-amber-200/80 px-1.5 py-0.2 rounded-md flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    Firebase DB
+                  </span>
+                </div>
                 <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider block leading-none">Standardized Lending</span>
               </div>
             </div>

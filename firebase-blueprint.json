@@ -1,0 +1,54 @@
+{
+  "entities": {
+    "loans": {
+      "title": "loans",
+      "description": "P2P loan applications and funded marketplace agreements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessName": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "requestedAmount": { "type": "number" },
+        "fundedAmount": { "type": "number" },
+        "termMonths": { "type": "number" },
+        "interestRate": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "borrowerEmail": { "type": "string" },
+        "lenderId": { "type": ["string", "null"] },
+        "paymentsMade": { "type": "number" },
+        "totalPaid": { "type": "number" }
+      },
+      "required": ["id", "businessName", "category", "description", "requestedAmount", "fundedAmount", "termMonths", "interestRate", "status", "createdAt", "borrowerEmail", "paymentsMade", "totalPaid"]
+    },
+    "transactions": {
+      "title": "transactions",
+      "description": "Ledger activity entries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "loanId": { "type": "string" },
+        "loanName": { "type": "string" },
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "timestamp": { "type": "string" },
+        "sender": { "type": "string" },
+        "receiver": { "type": "string" }
+      },
+      "required": ["id", "loanId", "loanName", "type", "amount", "timestamp", "sender", "receiver"]
+    },
+    "lenders": {
+      "title": "lenders",
+      "description": "Registered user accounts and balance statements",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "balance": { "type": "number" }
+      },
+      "required": ["email", "name", "photoUrl", "balance"]
+    }
+  }
+}
