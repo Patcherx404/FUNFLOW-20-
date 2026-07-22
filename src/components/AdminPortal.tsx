@@ -38,6 +38,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { Loan, Transaction } from '../types';
+import { syncLenderToFirestore, deleteLenderFromFirestore } from '../lib/firestoreSync';
 
 interface AdminPortalProps {
   loans: Loan[];
@@ -102,6 +103,10 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
   const [accountFormAccountStatus, setAccountFormAccountStatus] = useState<'ACTIVE' | 'SUSPENDED'>('ACTIVE');
   const [accountFormBalance, setAccountFormBalance] = useState('5000000');
   const [accountFormError, setAccountFormError] = useState('');
+
+  // Account delete confirmation modal & action feedback toasts
+  const [accountToDeleteConfirm, setAccountToDeleteConfirm] = useState<any | null>(null);
+  const [accountActionToast, setAccountActionToast] = useState<string | null>(null);
 
   const [accountSearchQuery, setAccountSearchQuery] = useState('');
   const [accountStatusFilter, setAccountStatusFilter] = useState('ALL');
@@ -292,6 +297,9 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
       };
       localStorage.setItem(`fundflow_lender_${emailClean}`, JSON.stringify(userProfile));
 
+      // Sync directly with Firebase Cloud Firestore
+      syncLenderToFirestore(userProfile);
+
       // Register email globally
       const emailsRaw = localStorage.getItem('fundflow_registered_lenders');
       let emails: string[] = emailsRaw ? JSON.parse(emailsRaw) : [];
@@ -301,6 +309,8 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
       }
 
       setShowAccountModal(false);
+      setAccountActionToast(`Account ${emailClean} saved & synchronized with Firebase database!`);
+      setTimeout(() => setAccountActionToast(null), 4000);
       loadRegisteredLenders();
     } catch (err) {
       console.error('[System Admin Console] Error saving account:', err);
@@ -311,29 +321,41 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
   const handleToggleAccountStatus = (email: string, currentStatus: string) => {
     const newStatus = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
     localStorage.setItem(`user_account_status_${email}`, newStatus);
+    setAccountActionToast(`Account ${email} status changed to ${newStatus}`);
+    setTimeout(() => setAccountActionToast(null), 3000);
     loadRegisteredLenders();
   };
 
-  const handleDeleteUserAccount = (email: string) => {
-    if (window.confirm(`Are you sure you want to permanently delete account (${email}) from the System Admin Console?`)) {
-      try {
-        const emailsRaw = localStorage.getItem('fundflow_registered_lenders');
-        let emails: string[] = emailsRaw ? JSON.parse(emailsRaw) : [];
-        emails = emails.filter(e => e.toLowerCase() !== email.toLowerCase());
-        localStorage.setItem('fundflow_registered_lenders', JSON.stringify(emails));
+  const handleDeleteUserAccount = (lender: any) => {
+    setAccountToDeleteConfirm(lender);
+  };
 
-        localStorage.removeItem(`fundflow_lender_${email}`);
-        localStorage.removeItem(`lender_name_${email}`);
-        localStorage.removeItem(`lender_address_${email}`);
-        localStorage.removeItem(`lender_id_doc_${email}`);
-        localStorage.removeItem(`lender_verification_status_${email}`);
-        localStorage.removeItem(`user_account_status_${email}`);
-        localStorage.removeItem(`user_balance_${email}`);
+  const handleConfirmExecuteDeleteAccount = (email: string) => {
+    try {
+      const emailClean = email.toLowerCase().trim();
+      const emailsRaw = localStorage.getItem('fundflow_registered_lenders');
+      let emails: string[] = emailsRaw ? JSON.parse(emailsRaw) : [];
+      emails = emails.filter(e => e.toLowerCase() !== emailClean);
+      localStorage.setItem('fundflow_registered_lenders', JSON.stringify(emails));
 
-        loadRegisteredLenders();
-      } catch (err) {
-        console.error('[System Admin Console] Error deleting user account:', err);
-      }
+      localStorage.removeItem(`fundflow_lender_${emailClean}`);
+      localStorage.removeItem(`lender_name_${emailClean}`);
+      localStorage.removeItem(`lender_address_${emailClean}`);
+      localStorage.removeItem(`lender_id_doc_${emailClean}`);
+      localStorage.removeItem(`lender_verification_status_${emailClean}`);
+      localStorage.removeItem(`user_account_status_${emailClean}`);
+      localStorage.removeItem(`user_balance_${emailClean}`);
+
+      // Delete document from Firebase Firestore
+      deleteLenderFromFirestore(emailClean);
+
+      setAccountToDeleteConfirm(null);
+      setAccountActionToast(`Account (${emailClean}) permanently deleted and removed from Firebase!`);
+      setTimeout(() => setAccountActionToast(null), 4000);
+
+      loadRegisteredLenders();
+    } catch (err) {
+      console.error('[System Admin Console] Error deleting user account:', err);
     }
   };
 
@@ -1646,7 +1668,7 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
                                   <Edit size={11} />
                                 </button>
                                 <button
-                                  onClick={() => handleDeleteUserAccount(lender.email)}
+                                  onClick={() => handleDeleteUserAccount(lender)}
                                   className="p-1 bg-slate-900 hover:bg-red-950/60 text-rose-400 border border-slate-700 hover:border-red-500/30 rounded-lg transition-colors cursor-pointer"
                                   title="Delete Account Record"
                                 >
@@ -2383,6 +2405,101 @@ export default function AdminPortal({ loans, transactions, onUpdateState, onLogo
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Account Delete Confirmation Modal */}
+      <AnimatePresence>
+        {accountToDeleteConfirm && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-slate-900 text-white border-2 border-red-500/50 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl relative"
+            >
+              <div className="p-5 border-b border-slate-800 bg-red-950/40 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="p-2 bg-red-500/20 text-red-400 rounded-xl border border-red-500/30">
+                    <Trash2 size={20} />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-black text-white font-display">Confirm Account Deletion</h4>
+                    <p className="text-[10px] text-red-200/80">Permanent purge from system & Firebase</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setAccountToDeleteConfirm(null)}
+                  className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4 bg-slate-900 text-xs">
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 font-mono">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 text-[11px]">Gmail Address:</span>
+                    <span className="text-white font-bold">{accountToDeleteConfirm.email}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 text-[11px]">Legal Name:</span>
+                    <span className="text-slate-200">{accountToDeleteConfirm.name || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 text-[11px]">Wallet Balance:</span>
+                    <span className="text-emerald-400 font-bold">₱{accountToDeleteConfirm.balance?.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 text-[11px]">Active Credit Requests:</span>
+                    <span className="text-indigo-400 font-bold">{accountToDeleteConfirm.borrowerLoansCount} Borrower / {accountToDeleteConfirm.lenderLoansCount} Lender</span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-red-950/40 border border-red-500/30 text-red-300 rounded-xl text-[11px] leading-relaxed flex items-start gap-2">
+                  <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Warning:</strong> Deleting this Gmail user account will remove all registered profile data, KYC verification status, and capital balance records from the local system and Firebase Cloud Firestore.
+                  </span>
+                </div>
+
+                <div className="pt-3 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAccountToDeleteConfirm(null)}
+                    className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleConfirmExecuteDeleteAccount(accountToDeleteConfirm.email)}
+                    className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 size={14} />
+                    Confirm Delete
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Action Toast Feedback */}
+      <AnimatePresence>
+        {accountActionToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9 }}
+            className="fixed bottom-6 right-6 z-50 bg-slate-900 border-2 border-indigo-500 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3"
+          >
+            <span className="p-1.5 bg-indigo-500/20 text-indigo-400 rounded-xl border border-indigo-500/30 animate-pulse">
+              <CheckCircle2 size={18} />
+            </span>
+            <span className="text-xs font-bold text-slate-100 font-mono">{accountActionToast}</span>
+          </motion.div>
         )}
       </AnimatePresence>
 

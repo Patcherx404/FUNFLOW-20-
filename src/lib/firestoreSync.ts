@@ -103,6 +103,39 @@ export async function syncLenderToFirestore(lender: Lender) {
   }
 }
 
+// Delete Lender Profile from Firestore
+export async function deleteLenderFromFirestore(email: string) {
+  try {
+    const docRef = doc(db, LENDERS_COLLECTION, email.toLowerCase().trim());
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error('Error deleting lender from Firestore:', err);
+  }
+}
+
+// Real-time listener for Lenders
+export function subscribeToLenders(onUpdate: (lenders: Lender[]) => void) {
+  try {
+    const q = query(collection(db, LENDERS_COLLECTION));
+    return onSnapshot(q, (snapshot) => {
+      if (snapshot.empty) {
+        onUpdate([]);
+        return;
+      }
+      const lenders: Lender[] = [];
+      snapshot.forEach((docSnap) => {
+        lenders.push(docSnap.data() as Lender);
+      });
+      onUpdate(lenders);
+    }, (error) => {
+      console.warn('Firestore lenders subscription error:', error);
+    });
+  } catch (err) {
+    console.warn('Failed to listen to Firestore lenders:', err);
+    return () => {};
+  }
+}
+
 // Seed initial data to Firestore if database collections are currently empty
 export async function seedFirestoreIfEmpty(initialLoans: Loan[], initialTxs: Transaction[]) {
   try {
